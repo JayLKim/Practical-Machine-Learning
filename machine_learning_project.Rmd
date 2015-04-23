@@ -1,0 +1,53 @@
+---
+title: "Course Project"
+output: html_document
+---
+
+```{r}
+download.file(url = "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", destfile = "training.csv", method="curl")
+training <- read.csv("training.csv", na.strings = c("NA", "", "#DIV/0!"))
+
+download.file(url = "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", destfile = "testing.csv", method="curl")
+testing <- read.csv("testing.csv", na.strings = c("NA", "", "#DIV/0!"))
+```
+
+```{r}
+data_yes <- training[training$new_window == "yes", ]
+data_no <- training[training$new_window == "no", ]
+data_ext_yes <- data_yes[, -grep("skewness|kurtosis", colnames(training))]
+data_ext_no <- data_no[, -grep("skewness|kurtosis|max|min|amplitude|var|avg|stddev", colnames(training))]
+data_ext_yes <- data_ext_yes[, -c(1, 2, 3, 4, 5, 6, 7)]
+data_ext_no <- data_ext_no[, -c(1, 2, 3, 4, 5, 6, 7)]
+```
+
+```{r}
+library(caret)
+set.seed(12345)
+inTrain <- createDataPartition(y = data_ext_no$classe, p = 0.75, list = FALSE)
+train_cv <- data_ext_no[inTrain, ]
+test_cv <- data_ext_no[-inTrain, ]
+modelFit <- train(classe ~ ., method = "rf", data = train_cv, prox = TRUE)
+modelFit <- train(classe ~ ., method = "rf", preProcess = "pca", thresh = 0.8, data = train_cv, prox = TRUE)
+pred_in <- predict(modelFit, newdata = train_cv)
+pred_out <- predict(modelFit, newdata = test_cv)
+accuracy_out <- confusionMatrix(pred_out, test_cv$classe)
+accuracy_in <- confusionMatrix(pred_in, train_cv$classe)
+accuracy_out <- accuracy_out$overall[1]
+accuracy_in <- accuracy_in$overall[1]
+accuracy_in
+accuracy_out
+```  
+
+```{r}
+test_yes <- testing[testing$new_window == "yes", ]
+test_no <- testing[testing$new_window == "no", ]
+test_ext_yes <- test_yes[, -grep("skewness|kurtosis", colnames(testing))]
+test_ext_no <- test_no[, -grep("skewness|kurtosis|max|min|amplitude|var|avg|stddev", colnames(training))]
+test_ext_yes <- test_ext_yes[, -c(1, 2, 3, 4, 5, 6, 7)]
+test_ext_no <- test_ext_no[, -c(1, 2, 3, 4, 5, 6, 7)]
+```
+
+```{r}
+pred_test <- predict(modelFit, newdata = test_ext_no)
+answers <- pred_test
+```
