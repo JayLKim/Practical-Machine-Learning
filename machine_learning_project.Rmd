@@ -3,22 +3,37 @@ title: "Course Project"
 output: html_document
 ---
 
+# Downloading and Importing Data
+
+The weight lifting exercises datasets were downloaded from the given url on the course project page, and then each dataset was imported into R. The datasets contained blanks, NA and "#DIV/0!". Among those fields, the "#DIV/0!" is maybe an error message of Excel when one try to divide something by zero, and this might be inappropriate for building a model. So I set them as NA values.
+
 ```{r}
+# training data
 download.file(url = "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", destfile = "training.csv", method="curl")
 training <- read.csv("training.csv", na.strings = c("NA", "", "#DIV/0!"))
-
+# test data
 download.file(url = "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", destfile = "testing.csv", method="curl")
 testing <- read.csv("testing.csv", na.strings = c("NA", "", "#DIV/0!"))
 ```
 
+# Cleaning Data
+
+Looking into the training data, one can notice that when the "new_window" variable is "yes" the other variables contain summaries of the raw data. One of the purpose of this modeling, according to the authors' document which can be downloaded from [here](http://groupware.les.inf.puc-rio.br/public/papers/2013.Velloso.QAR-WLE.pdf), is to detect mistakes in real time and feedback instantly. So real time data which are not modified at all may be more appropriate for this modeling. For this reason, I decided to exclude the data of which the "new_window" variable was "yes". Therefore the variables about skewness, kurtosis, maximum, minimum, amplitude, variance, average and standard deviation were not needed anymore, so they were also excluded. The test data were adjusted in the same way.
+
 ```{r}
-data_yes <- training[training$new_window == "yes", ]
 data_no <- training[training$new_window == "no", ]
-data_ext_yes <- data_yes[, -grep("skewness|kurtosis", colnames(training))]
 data_ext_no <- data_no[, -grep("skewness|kurtosis|max|min|amplitude|var|avg|stddev", colnames(training))]
-data_ext_yes <- data_ext_yes[, -c(1, 2, 3, 4, 5, 6, 7)]
-data_ext_no <- data_ext_no[, -c(1, 2, 3, 4, 5, 6, 7)]
+
+test_no <- testing[testing$new_window == "no", ]
+test_ext_no <- test_no[, -grep("skewness|kurtosis|max|min|amplitude|var|avg|stddev", colnames(training))]
+# To make the data more tidy, the first seven variables are excluded.
+data_ext_no <- data_ext_no[, -c(1:7)]
+test_ext_no <- test_ext_no[, -c(1:7)]
 ```
+
+# Building a Model
+
+I adopted random forests which is adequate for nonlinear settings. The random forests method is quite accurate but, on the other hand, it takes a long time to build a model. So I preprocessed data with principal components analysis to reduce the dimensions setting the variance threshold to be retained at 0.8. Before the modeling, I split the training data into two datasets. One was a new training set and another was a dataset for cross validation.
 
 ```{r}
 library(caret)
@@ -26,28 +41,36 @@ set.seed(12345)
 inTrain <- createDataPartition(y = data_ext_no$classe, p = 0.75, list = FALSE)
 train_cv <- data_ext_no[inTrain, ]
 test_cv <- data_ext_no[-inTrain, ]
-modelFit <- train(classe ~ ., method = "rf", data = train_cv, prox = TRUE)
-modelFit <- train(classe ~ ., method = "rf", preProcess = "pca", thresh = 0.8, data = train_cv, prox = TRUE)
-pred_in <- predict(modelFit, newdata = train_cv)
-pred_out <- predict(modelFit, newdata = test_cv)
-accuracy_out <- confusionMatrix(pred_out, test_cv$classe)
-accuracy_in <- confusionMatrix(pred_in, train_cv$classe)
-accuracy_out <- accuracy_out$overall[1]
-accuracy_in <- accuracy_in$overall[1]
-accuracy_in
-accuracy_out
-```  
+suppressWarnings(modelFit <- train(classe ~ ., method = "rf", preProcess = "pca", thresh = 0.8, data = train_cv, prox = TRUE))
+```
+
+# Results
 
 ```{r}
-test_yes <- testing[testing$new_window == "yes", ]
-test_no <- testing[testing$new_window == "no", ]
-test_ext_yes <- test_yes[, -grep("skewness|kurtosis", colnames(testing))]
-test_ext_no <- test_no[, -grep("skewness|kurtosis|max|min|amplitude|var|avg|stddev", colnames(training))]
-test_ext_yes <- test_ext_yes[, -c(1, 2, 3, 4, 5, 6, 7)]
-test_ext_no <- test_ext_no[, -c(1, 2, 3, 4, 5, 6, 7)]
-```
+pred_in <- predict(modelFit, newdata = train_cv)
+pred_out <- predict(modelFit, newdata = test_cv)
+CM_out <- confusionMatrix(pred_out, test_cv$classe)
+CM_in <- confusionMatrix(pred_in, train_cv$classe)
+# To print the confusion matrices
+CM_out
+CM_in
+# To extract the accuracy values from the confusionMatrix objects.
+accuracy_out <- unname(CM_out$overall[1])
+accuracy_in <- unname(CM_in$overall[1])
+```  
+
+The accuracy of the built model for the training data itself was `r accuracy_in`. To estimate the out of sample error, I applied the model to the other independent dataset, and the expected error was `r 1 - accuracy_out`. I think the predictive power of this model is quite good.
+
+# Answering the Questions
+
+To submit the answers, I applied this model to the original test dataset, which was assigned to a character vector, "answers". There were two wrong answers.
 
 ```{r}
 pred_test <- predict(modelFit, newdata = test_ext_no)
 answers <- pred_test
+answers
 ```
+
+# Reference
+
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
